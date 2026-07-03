@@ -1,47 +1,47 @@
 package com.superteam.app
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.safeContentPadding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import org.jetbrains.compose.resources.painterResource
+import com.superteam.app.di.fakeAppModule
+import com.superteam.app.di.networkAppModule
+import com.superteam.app.presentation.result.ResultRoot
+import com.superteam.app.presentation.upload.UploadRoot
+import org.koin.compose.KoinApplication
 
-import superteamapp.app.shared.generated.resources.Res
-import superteamapp.app.shared.generated.resources.compose_multiplatform
+enum class Screen { UPLOAD, RESULT }
+
+const val USE_FAKE_API = false
 
 @Composable
-@Preview
 fun App() {
-    MaterialTheme {
-        var showContent by remember { mutableStateOf(false) }
-        Column(
-            modifier = Modifier
-                .background(MaterialTheme.colorScheme.primaryContainer)
-                .safeContentPadding()
-                .fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Button(onClick = { showContent = !showContent }) {
-                Text("Click me!")
-            }
-            AnimatedVisibility(showContent) {
-                val greeting = remember { Greeting().greet() }
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Image(painterResource(Res.drawable.compose_multiplatform), null)
-                    Text("Compose: $greeting")
+    KoinApplication(application = {
+        modules(if (USE_FAKE_API) fakeAppModule else networkAppModule)
+    }) {
+        var currentScreen by remember { mutableStateOf(Screen.UPLOAD) }
+        var selectedTaskId by remember { mutableStateOf<String?>(null) }
+
+        MaterialTheme {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                when (currentScreen) {
+                    Screen.UPLOAD -> UploadRoot(
+                        onNavigateToResult = { taskId ->
+                            selectedTaskId = taskId
+                            currentScreen = Screen.RESULT
+                        }
+                    )
+                    Screen.RESULT -> ResultRoot(
+                        taskId = selectedTaskId ?: "unknown",
+                        onNavigateBack = {
+                            currentScreen = Screen.UPLOAD
+                        }
+                    )
                 }
             }
         }

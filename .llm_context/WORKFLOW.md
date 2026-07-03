@@ -73,3 +73,11 @@ Definition of done:
 ## Keeping Task Files After Completion
 Keep completed task files in `tasks/` with `Status: done`. They serve as a history log
 and provide context if a future task revisits the same area. Never delete them.
+
+## Information Gathering
+
+When facing unresolved references, unfamiliar library APIs, or build failures that persist beyond two attempts:
+
+1. **Primary**: Use `duckduckgo_search` to find official documentation (e.g., "Ktor 3.5 SSE server-sent events", "Kotlin Gradle version catalog TOML accessor dots vs camelCase").
+2. **Fallback**: Use `webfetch` on a specific documentation page URL if search results are insufficient.
+3. **Never**: Guess API signatures, module coordinates, or accessor names. Each incorrect guess wastes a full build cycle and context.
