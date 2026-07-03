@@ -1,0 +1,19 @@
+# Auto-normalize text files (repo: LF, local: OS dependent)
+* text=auto
+
+# Linux/Mac scripts MUST be LF to prevent WSL/Docker "/bin/sh^M: bad interpreter" crashes
+*.sh text eol=lf
+gradlew text eol=lf
+
+# Windows scripts MUST be CRLF to prevent execution failures in CMD
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Explicitly mark binaries to prevent Git from corrupting them during LF/CRLF conversions
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary

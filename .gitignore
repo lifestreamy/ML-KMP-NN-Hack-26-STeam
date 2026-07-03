@@ -1,0 +1,13 @@
+.idea/
+.vscode/
+*.iml
+.DS_Store
+.jj/
+
+.llm_context/*
+!.llm_context/architecture/
+!.llm_context/STATUS.md
+!.llm_context/WORKFLOW.md
+
+build/
+.gradle/
