@@ -11,14 +11,23 @@ application {
 }
 
 dependencies {
-    implementation(projects.core) // Зависимость на общие модели
+    implementation(projects.core)
 
     implementation(libs.ktor.server.core)
-    implementation(libs.ktor.server.netty)
     implementation(libs.ktor.server.cors)
+    implementation(libs.ktor.server.netty)
     implementation(libs.ktor.server.sse)
     implementation(libs.ktor.server.content.negotiation)
-    implementation(libs.ktor.server.serialization)
+
+    implementation(libs.ktor.server.call.logging)
+
+    implementation(libs.ktor.serialization.json)
+
+    // Client deps
+//    implementation(libs.ktor.client.cio.jvm)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
+
 
     implementation(libs.logback)
     implementation(libs.koin.core)

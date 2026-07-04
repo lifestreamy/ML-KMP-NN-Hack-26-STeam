@@ -40,7 +40,8 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
-import com.superteam.app.error.Result
+import com.superteam.app.error.onFailure
+import com.superteam.app.error.onSuccess
 
 data class UploadState(
     val selectedFileCount: Int = 0,
@@ -149,21 +150,18 @@ class UploadViewModel(
     }
 
     private fun pickFiles() {
-        _state.update { it.copy(selectedFileCount = 50) }
+        _state.update { it.copy(selectedFileCount = 3) }
     }
 
     private fun analyze() {
         scope.launch {
             _state.update { it.copy(isAnalyzing = true, errorMessage = null) }
-            val fakeBytes = List(_state.value.selectedFileCount) { index ->
-                "slide_$index.tiff".encodeToByteArray()
-            }
-            when (val result = repository.uploadImages(fakeBytes)) {
-                is Result.Success -> {}
-                is Result.Error -> {
-                    _state.update { it.copy(errorMessage = "Network unreachable. Check server.") }
+            val fakeBytes = List(_state.value.selectedFileCount) { byteArrayOf(0x00) }
+            repository.uploadImages(fakeBytes)
+                .onSuccess { }
+                .onFailure { error ->
+                    _state.update { it.copy(errorMessage = error.message) }
                 }
-            }
             _state.update { it.copy(isAnalyzing = false) }
         }
     }
@@ -174,24 +172,22 @@ class UploadViewModel(
                 .filter { !it.isTerminal }
                 .map { it.taskId }
             if (activeIds.isNotEmpty()) {
-                when (val result = repository.cancelTasks(activeIds)) {
-                    is Result.Success -> {}
-                    is Result.Error -> {
-                        _state.update { it.copy(errorMessage = "Failed to cancel. Network issue.") }
+                repository.cancelTasks(activeIds)
+                    .onSuccess { }
+                    .onFailure { error ->
+                        _state.update { it.copy(errorMessage = error.message) }
                     }
-                }
             }
         }
     }
 
     private fun cancelTask(taskId: String) {
         scope.launch {
-            when (val result = repository.cancelTasks(listOf(taskId))) {
-                is Result.Success -> {}
-                is Result.Error -> {
-                    _state.update { it.copy(errorMessage = "Failed to cancel. Network issue.") }
+            repository.cancelTasks(listOf(taskId))
+                .onSuccess { }
+                .onFailure { error ->
+                    _state.update { it.copy(errorMessage = error.message) }
                 }
-            }
         }
     }
 

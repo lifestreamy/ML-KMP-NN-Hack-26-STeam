@@ -26,6 +26,7 @@
 4. Do not scan or read other files unless the task explicitly requires it.
 
 ### 2. Execute
+- Before writing any code, look in `.llm_context/skills/` and read the `SKILL.md` file that matches the layer you are working on (e.g., read `kmp-data-layer/SKILL.md` if working on a repository).
 - Do one task at a time.
 - Never start the next task automatically.
 - Write clean, self-documenting code.

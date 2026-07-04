@@ -1,6 +1,23 @@
 package com.superteam.app.error
 
-sealed interface Result<out D, out E> {
-    data class Success<D>(val data: D) : Result<D, Nothing>
-    data class Error<E>(val error: E) : Result<Nothing, E>
+interface Error
+
+sealed interface Result<out D, out E : Error> {
+    data class Success<out D>(val data: D) : Result<D, Nothing>
+    data class Error<out E : com.superteam.app.error.Error>(val error: E) : Result<Nothing, E>
+}
+
+inline fun <T, E : Error, R> Result<T, E>.map(map: (T) -> R): Result<R, E> = when (this) {
+    is Result.Error -> Result.Error(error)
+    is Result.Success -> Result.Success(map(this.data))
+}
+
+inline fun <T, E : Error> Result<T, E>.onSuccess(action: (T) -> Unit): Result<T, E> {
+    if (this is Result.Success) action(this.data)
+    return this
+}
+
+inline fun <T, E : Error> Result<T, E>.onFailure(action: (E) -> Unit): Result<T, E> {
+    if (this is Result.Error) action(error)
+    return this
 }

@@ -4,9 +4,14 @@
             <pattern>%d{YYYY-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
-    <root level="trace">
-        <appender-ref ref="STDOUT"/>
+
+    <!-- Выключаем мусорные трейсы Ktor -->
+    <logger name="io.ktor" level="INFO" />
+    <logger name="io.ktor.server.plugins.cors" level="WARN" />
+    <logger name="io.ktor.server.plugins.contentnegotiation" level="WARN" />
+    <logger name="io.ktor.client.plugins.HttpCallValidator" level="ERROR" /> <!-- Чтобы Client не спамил Connection refused -->
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
     </root>
-    <logger name="org.eclipse.jetty" level="INFO"/>
-    <logger name="io.netty" level="INFO"/>
 </configuration>

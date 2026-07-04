@@ -1,151 +1,151 @@
 package com.superteam.app
 
 import com.superteam.app.models.AnalysisResult
-import com.superteam.app.models.Defect
-import com.superteam.app.models.PhaseInfo
 import com.superteam.app.models.TaskUpdateEvent
 import com.superteam.app.server.TaskQueueManager
+import io.ktor.client.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.http.content.*
+import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
+import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.cors.routing.*
-import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.ktor.serialization.kotlinx.json.*
+import io.ktor.server.sse.*
+import io.ktor.sse.*
 import io.ktor.util.cio.*
 import io.ktor.utils.io.*
 import kotlinx.serialization.json.Json
+import org.slf4j.event.Level
 import java.io.File
 import java.util.*
 
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation as ServerContentNegotiation
+
 fun main() {
-    embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module)
-        .start(wait = true)
+    embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module).start(wait = true)
 }
 
 fun Application.module() {
     val taskQueue = TaskQueueManager()
-    val sseJson = Json { encodeDefaults = false }
+    val sseJson = Json { encodeDefaults = false; ignoreUnknownKeys = true }
 
-    install(ContentNegotiation) {
-        json(Json {
-            ignoreUnknownKeys = true
-            isLenient = true
-        })
+    // Внутренний HTTP клиент для общения Ktor -> Python server
+    val internalClient = HttpClient(CIO) {
+        install(ClientContentNegotiation) {
+            json(Json { ignoreUnknownKeys = true })
+        }
     }
+
+    install(CallLogging) {
+        level = Level.INFO
+        filter { call -> !call.request.uri.startsWith("/health") }
+    }
+
+    install(ServerContentNegotiation) {
+        json(Json { ignoreUnknownKeys = true; isLenient = true })
+    }
+
+    install(SSE)
 
     install(CORS) {
         anyHost()
         allowHeader(HttpHeaders.ContentType)
         allowHeader("X-Client-Id")
+        allowHeader(HttpHeaders.CacheControl)
         allowMethod(HttpMethod.Get)
         allowMethod(HttpMethod.Post)
         allowMethod(HttpMethod.Delete)
-        allowHeader(HttpHeaders.CacheControl)
     }
 
     routing {
         get("/health") {
-            call.respond(mapOf("status" to "ok", "service" to "ktor-gateway"))
+            val isPythonHealthy = try {
+                internalClient.get("http://localhost:8000/health").status.isSuccess()
+            } catch (e: Exception) {
+                false
+            }
+
+            call.respond(mapOf("ktor" to "ok", "python" to if (isPythonHealthy) "ok" else "disconnected"))
         }
 
-        get("/") {
-            call.respondText(sayHello("Ktor"))
-        }
+        get("/") { call.respondText("Ktor Gateway") }
 
         post("/api/tasks") {
+            val isPythonHealthy = try {
+                internalClient.get("http://localhost:8000/health").status.isSuccess()
+            } catch (e: Exception) {
+                false
+            }
+
+            if (!isPythonHealthy) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    mapOf("error" to "Python ML Server is unreachable. Please try again later.")
+                            )
+                return@post
+            }
+
             val clientId = call.request.header("X-Client-Id") ?: UUID.randomUUID().toString()
             val multipart = call.receiveMultipart()
             val taskIds = mutableListOf<String>()
 
             multipart.forEachPart { part ->
-                when (part) {
-                    is PartData.FileItem -> {
-                        val fileName = part.originalFileName ?: "upload"
-                        val taskId = UUID.randomUUID().toString().take(12)
-                        val tempFile = File(
-                            System.getProperty("java.io.tmpdir"),
-                            "${taskId}_$fileName"
-                        )
-                        part.provider().copyAndClose(tempFile.writeChannel())
-                        taskQueue.enqueueTask(clientId, taskId, fileName)
-                        taskIds.add(taskId)
-                    }
-                    else -> {}
+                if (part is PartData.FileItem) {
+                    val fileName = part.originalFileName ?: "upload"
+                    val taskId = UUID.randomUUID().toString().take(12)
+                    val tempFile = File(System.getProperty("java.io.tmpdir"), "${taskId}_$fileName")
+                    part.provider().copyAndClose(tempFile.writeChannel())
+                    taskQueue.enqueueTask(clientId, taskId, fileName)
+                    taskIds.add(taskId)
                 }
                 part.dispose()
             }
-
-            call.respond(
-                mapOf("tasks" to taskIds.map { id ->
-                    mapOf("task_id" to id, "filename" to id)
-                })
-            )
+            call.respond(mapOf("tasks" to taskIds.map { mapOf("task_id" to it, "filename" to it) }))
         }
 
         delete("/api/tasks") {
-            val clientId = call.request.header("X-Client-Id") ?: return@delete call.respond(
-                HttpStatusCode.BadRequest, mapOf("error" to "Missing X-Client-Id")
-            )
             val body = call.receive<Map<String, List<String>>>()
-            val taskIds = body["task_ids"] ?: return@delete call.respond(
-                HttpStatusCode.BadRequest, mapOf("error" to "Missing task_ids")
-            )
-            taskQueue.cancelTasks(taskIds)
+            val ids = body["task_ids"] ?: return@delete call.respond(HttpStatusCode.BadRequest,
+                mapOf("error" to "Missing task_ids"))
+            taskQueue.cancelTasks(ids)
             call.respond(mapOf("status" to "cancelled"))
         }
 
-        get("/api/tasks/stream") {
-            val clientId = call.request.header("X-Client-Id")
-                ?: return@get call.respond(HttpStatusCode.BadRequest, "Missing X-Client-Id")
+        sse("/api/tasks/stream") {
+            val clientId = call.request.header("X-Client-Id") ?: return@sse close()
+            send(ServerSentEvent(event = "ping", data = """{"status":"connected"}"""))
 
-            call.response.cacheControl(CacheControl.NoCache(null))
-            call.respondTextWriter(contentType = ContentType.Text.EventStream) {
-                val channel = taskQueue.observeUpdates()
-                val knownIds = taskQueue.getClientTaskIds(clientId).toMutableSet()
+            val knownIds = taskQueue.getClientTaskIds(clientId).toMutableSet()
 
-                for (update in channel) {
-                    if (update.taskId in knownIds) {
-                        when (update.stage) {
-                            "done" -> {
-                                val fakeResult = sseJson.encodeToString(
-                                    AnalysisResult.serializer(),
-                                    AnalysisResult(
-                                        sampleId = update.taskId,
-                                        oreClass = "talcose",
-                                        talkcPct = 14.2,
-                                        phases = mapOf(
-                                            "ordinary_intergrowths" to PhaseInfo(24.1, "#00FF00"),
-                                            "fine_intergrowths" to PhaseInfo(61.7, "#FF0000")
-                                        ),
-                                        defects = listOf(
-                                            Defect("crack", 1200, listOf(120, 45, 180, 90))
-                                        )
-                                    )
-                                )
-                                val payload = sseJson.encodeToString(
-                                    TaskUpdateEvent.serializer(),
-                                    update.copy(message = fakeResult)
-                                )
-                                write("event: result\n")
-                                write("data: $payload\n\n")
-                            }
-                            "error" -> {
-                                val payload = sseJson.encodeToString(TaskUpdateEvent.serializer(), update)
-                                write("event: error\n")
-                                write("data: $payload\n\n")
-                            }
-                            else -> {
-                                val payload = sseJson.encodeToString(TaskUpdateEvent.serializer(), update)
-                                write("event: update\n")
-                                write("data: $payload\n\n")
-                            }
+            taskQueue.observeUpdates().collect { update ->
+                if (update.taskId in knownIds || update.stage == "queued") {
+                    knownIds.add(update.taskId)
+                    when (update.stage) {
+                        "done" -> {
+                            val fakeResult = sseJson.encodeToString(
+                                AnalysisResult.serializer(),
+                                AnalysisResult(sampleId = update.taskId, oreClass = "talcose", talkcPct = 14.2)
+                                                                   )
+                            val payload =
+                                sseJson.encodeToString(TaskUpdateEvent.serializer(), update.copy(message = fakeResult))
+                            send(ServerSentEvent(data = payload, event = "result"))
                         }
-                        flush()
+                        "error" -> {
+                            val payload = sseJson.encodeToString(TaskUpdateEvent.serializer(), update)
+                            send(ServerSentEvent(data = payload, event = "error"))
+                        }
+                        else -> {
+                            val payload = sseJson.encodeToString(TaskUpdateEvent.serializer(), update)
+                            send(ServerSentEvent(data = payload, event = "update"))
+                        }
                     }
                 }
             }

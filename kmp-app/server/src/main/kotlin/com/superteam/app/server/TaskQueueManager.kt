@@ -2,23 +2,23 @@ package com.superteam.app.server
 
 import com.superteam.app.models.AnalysisStage
 import com.superteam.app.models.TaskUpdateEvent
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlin.time.Duration.Companion.milliseconds
 
 class TaskQueueManager {
-
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val stages = mutableMapOf<String, MutableStateFlow<AnalysisStage>>()
     private val queue = Channel<String>(Channel.UNLIMITED)
     private val clientTasks = mutableMapOf<String, MutableSet<String>>()
     private val filenames = mutableMapOf<String, String>()
-    private val updates = Channel<TaskUpdateEvent>(Channel.BUFFERED)
+
+    // SharedFlow для SSE, чтобы несколько клиентов могли слушать поток
+    private val _updates = MutableSharedFlow<TaskUpdateEvent>(extraBufferCapacity = 100)
 
     init {
         scope.launch {
@@ -43,13 +43,7 @@ class TaskQueueManager {
     }
 
     private suspend fun emit(taskId: String, stage: String, position: Int) {
-        updates.send(
-            TaskUpdateEvent(
-                taskId = taskId,
-                stage = stage,
-                positionInQueue = position
-            )
-        )
+        _updates.emit(TaskUpdateEvent(taskId = taskId, stage = stage, positionInQueue = position))
     }
 
     fun enqueueTask(clientId: String, taskId: String, fileName: String) {
@@ -62,20 +56,13 @@ class TaskQueueManager {
 
     private fun emitQueuedUpdate(taskId: String) {
         scope.launch {
-            updates.send(
-                TaskUpdateEvent(
-                    taskId = taskId,
-                    stage = "queued",
-                    positionInQueue = 0
-                )
-            )
+            _updates.emit(TaskUpdateEvent(taskId = taskId, stage = "queued", positionInQueue = 0))
         }
     }
 
-    fun observeUpdates(): kotlinx.coroutines.channels.ReceiveChannel<TaskUpdateEvent> = updates
+    fun observeUpdates(): SharedFlow<TaskUpdateEvent> = _updates.asSharedFlow()
 
-    fun getClientTaskIds(clientId: String): Set<String> =
-        clientTasks[clientId]?.toSet() ?: emptySet()
+    fun getClientTaskIds(clientId: String): Set<String> = clientTasks[clientId]?.toSet() ?: emptySet()
 
     fun cancelTasks(taskIds: List<String>) {
         taskIds.forEach { taskId ->
@@ -84,13 +71,7 @@ class TaskQueueManager {
         }
         scope.launch {
             taskIds.forEach { taskId ->
-                updates.send(
-                    TaskUpdateEvent(
-                        taskId = taskId,
-                        stage = "error",
-                        message = "Cancelled by user"
-                    )
-                )
+                _updates.emit(TaskUpdateEvent(taskId = taskId, stage = "error", message = "Cancelled by user"))
             }
         }
     }
