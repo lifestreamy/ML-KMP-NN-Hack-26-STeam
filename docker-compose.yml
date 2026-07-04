@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  ktor-gateway:
+    image: gradle:8.7-jdk21
+    volumes:
+      - ./kmp-app:/app
+    working_dir: /app
+    command: ./gradlew :server:run
+    ports:
+      - "8080:8080"
+    depends_on:
+      - ml-service
+
+  ml-service:
+    image: python:3.11-slim
+    volumes:
+      - ./ml-service:/app
+    working_dir: /app
+    command: sh -c "pip install -r requirements.txt && python run.py"
+    ports:
+      - "8000:8000"
