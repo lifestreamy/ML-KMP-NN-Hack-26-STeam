@@ -23,11 +23,11 @@ class NetworkAnalysisRepository(
     private val healthRepo: NetworkHealthRepository,
     private val baseUrl: String = "http://localhost:8080"
                                ) : AnalysisRepository {
-
     private val clientId = "ui-${Random.nextLong().toString(16)}"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val stages = mutableMapOf<String, MutableStateFlow<AnalysisStage>>()
-    private val sseJson = Json { ignoreUnknownKeys = true }
+
+    private val networkJson = Json { ignoreUnknownKeys = true }
 
     private val _taskIds = MutableStateFlow<List<String>>(emptyList())
     override val taskIds: StateFlow<List<String>> = _taskIds.asStateFlow()
@@ -37,15 +37,14 @@ class NetworkAnalysisRepository(
         monitorConnection()
     }
 
-    // Слушаем статус подключения. Если Ktor упал, "убиваем" зависшие таски
     private fun monitorConnection() {
         scope.launch {
-            healthRepo.isKtorConnected.collect { isConnected ->
-                if (!isConnected) {
-                    stages.forEach { (_, stateFlow) ->
-                        val current = stateFlow.value
-                        if (current !is AnalysisStage.Done && current !is AnalysisStage.Error) {
-                            stateFlow.value = AnalysisStage.Error("Connection to Ktor server lost")
+            healthRepo.isKtorConnected.collect { connected ->
+                if (!connected) {
+                    stages.forEach { (_, sf) ->
+                        val c = sf.value
+                        if (c !is AnalysisStage.Done && c !is AnalysisStage.Error) {
+                            sf.value = AnalysisStage.Error("Connection to Ktor server lost")
                         }
                     }
                 }
@@ -57,26 +56,17 @@ class NetworkAnalysisRepository(
         scope.launch {
             while (isActive) {
                 try {
-                    client.sse({
-                        url("$baseUrl/api/tasks/stream")
-                        header("X-Client-Id", clientId)
-                    }) {
+                    client.sse({ url("$baseUrl/api/tasks/stream"); header("X-Client-Id", clientId) }) {
                         incoming.collect { event ->
                             val data = event.data ?: return@collect
                             if (data.isEmpty() || event.event == "ping") return@collect
                             val update = try {
-                                sseJson.decodeFromString<TaskUpdateEvent>(data)
-                            } catch (e: Throwable) { return@collect }
-
-                            val stage = mapStage(update)
-                            val stateFlow = stages.getOrPut(update.taskId) {
-                                MutableStateFlow(AnalysisStage.Queued(0))
+                                networkJson.decodeFromString<TaskUpdateEvent>(data)
+                            } catch (e: Throwable) {
+                                return@collect
                             }
-                            stateFlow.value = stage
-
-                            if (update.taskId !in _taskIds.value) {
-                                _taskIds.update { current -> current + update.taskId }
-                            }
+                            stages.getOrPut(update.taskId) { MutableStateFlow(AnalysisStage.Queued(0)) }.value = mapStage(update)
+                            if (update.taskId !in _taskIds.value) _taskIds.update { current -> current + update.taskId }
                         }
                     }
                 } catch (e: CancellationException) {
@@ -97,36 +87,27 @@ class NetworkAnalysisRepository(
         else -> AnalysisStage.Error(update.message ?: "Unknown stage: ${update.stage}")
     }
 
-    override suspend fun uploadImages(files: List<ByteArray>): Result<List<String>, NetworkError> {
+    override suspend fun uploadImages(files: Map<String, ByteArray>): Result<List<String>, NetworkError> {
         return try {
             val response = client.post("$baseUrl/api/tasks") {
                 header("X-Client-Id", clientId)
-                setBody(
-                    MultiPartFormDataContent(
-                        formData {
-                            files.forEachIndexed { index, bytes ->
-                                append("files", bytes, Headers.build {
-                                    append(HttpHeaders.ContentType, "image/tiff")
-                                    append(HttpHeaders.ContentDisposition, "filename=\"slide_$index.tiff\"")
-                                })
-                            }
-                        }
-                                            )
-                       )
+                setBody(MultiPartFormDataContent(formData {
+                    files.forEach { (fileName, bytes) ->
+                        append("files", bytes, Headers.build {
+                            append(HttpHeaders.ContentDisposition, "filename=\"$fileName\"")
+                        })
+                    }
+                }))
             }
-
-            // Если Ktor вернул ошибку 503 Service Unavailable (питон лежит)
             if (response.status == HttpStatusCode.ServiceUnavailable) {
                 return Result.Error(NetworkError.Unknown("Python ML Server is down"))
             }
 
             val body = response.bodyAsText()
-            val parsed = Json { ignoreUnknownKeys = true }.decodeFromString<UploadResponse>(body)
-            val ids = parsed.tasks.map { it.taskId }
-
-            ids.forEach { id ->
-                stages[id] = MutableStateFlow(AnalysisStage.Queued(0))
-                _taskIds.update { current -> current + id }
+            val ids = networkJson.decodeFromString<UploadResponse>(body).tasks.map { it.taskId }
+            ids.forEach {
+                stages[it] = MutableStateFlow(AnalysisStage.Queued(0))
+                _taskIds.update { c -> c + it }
             }
             Result.Success(ids)
         } catch (e: CancellationException) {
@@ -136,9 +117,7 @@ class NetworkAnalysisRepository(
         }
     }
 
-    override fun getAnalysisStream(taskId: String): Flow<AnalysisStage> {
-        return stages.getOrPut(taskId) { MutableStateFlow(AnalysisStage.Error("Unknown task")) }
-    }
+    override fun getAnalysisStream(taskId: String): Flow<AnalysisStage> = stages.getOrPut(taskId) { MutableStateFlow(AnalysisStage.Error("Unknown task")) }
 
     override suspend fun cancelTasks(taskIds: List<String>): Result<Unit, NetworkError> {
         return try {
@@ -147,9 +126,7 @@ class NetworkAnalysisRepository(
                 contentType(ContentType.Application.Json)
                 setBody(mapOf("task_ids" to taskIds))
             }
-            taskIds.forEach { taskId ->
-                stages[taskId]?.value = AnalysisStage.Error("Cancelled by user")
-            }
+            taskIds.forEach { stages[it]?.value = AnalysisStage.Error("Cancelled by user") }
             _taskIds.update { current -> current - taskIds.toSet() }
             Result.Success(Unit)
         } catch (e: CancellationException) {
@@ -161,10 +138,7 @@ class NetworkAnalysisRepository(
 }
 
 @kotlinx.serialization.Serializable
-private data class UploadTaskItem(
-    @kotlinx.serialization.SerialName("task_id") val taskId: String,
-    val filename: String
-                                 )
+private data class UploadTaskItem(@kotlinx.serialization.SerialName("task_id") val taskId: String, val filename: String)
 
 @kotlinx.serialization.Serializable
 private data class UploadResponse(val tasks: List<UploadTaskItem>)

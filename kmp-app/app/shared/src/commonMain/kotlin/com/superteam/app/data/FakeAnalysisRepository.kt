@@ -4,24 +4,15 @@ import com.superteam.app.domain.AnalysisRepository
 import com.superteam.app.error.NetworkError
 import com.superteam.app.error.Result
 import com.superteam.app.models.AnalysisStage
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.*
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.milliseconds
 
 class FakeAnalysisRepository(
     dispatcher: CoroutineDispatcher = Dispatchers.Default
-) : AnalysisRepository {
+                            ) : AnalysisRepository {
 
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val stages = mutableMapOf<String, MutableStateFlow<AnalysisStage>>()
@@ -45,11 +36,13 @@ class FakeAnalysisRepository(
         }
     }
 
-    override suspend fun uploadImages(files: List<ByteArray>): Result<List<String>, NetworkError> {
+    override suspend fun uploadImages(files: Map<String, ByteArray>): Result<List<String>, NetworkError> {
         delay(300.milliseconds)
-        val ids = files.mapIndexed { i, _ ->
+
+        val ids = List(files.size) {
             "task-${Random.nextInt(0x10000, 0xFFFFF).toString(16)}"
         }
+
         ids.forEachIndexed { index, id ->
             val initialStage = AnalysisStage.Queued(position = index + 1)
             stages[id] = MutableStateFlow(initialStage)

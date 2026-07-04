@@ -18,6 +18,7 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -114,10 +115,10 @@ class UploadViewModel(private val repository: AnalysisRepository) {
         scope.launch {
             _state.update { it.copy(isAnalyzing = true, errorMessage = null) }
             try {
-                val files = _state.value.selectedFiles
-                val byteArrays = files.map { it.readBytes() }
+                val filesData =
+                    _state.value.selectedFiles.associate { it.name to it.readBytes() }
 
-                repository.uploadImages(byteArrays).onSuccess {
+                repository.uploadImages(filesData).onSuccess {
                     _state.update { s -> s.copy(selectedFiles = emptyList()) }
                 }.onFailure { error ->
                     _state.update { s -> s.copy(errorMessage = error.message) }
