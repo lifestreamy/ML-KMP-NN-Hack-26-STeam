@@ -4,6 +4,7 @@ import com.superteam.app.domain.AnalysisRepository
 import com.superteam.app.error.NetworkError
 import com.superteam.app.error.Result
 import com.superteam.app.error.toNetworkError
+import com.superteam.app.models.AnalysisResult
 import com.superteam.app.models.AnalysisStage
 import com.superteam.app.models.TaskUpdateEvent
 import io.ktor.client.*
@@ -60,13 +61,14 @@ class NetworkAnalysisRepository(
                         incoming.collect { event ->
                             val data = event.data ?: return@collect
                             if (data.isEmpty() || event.event == "ping") return@collect
-                            val update = try {
-                                networkJson.decodeFromString<TaskUpdateEvent>(data)
+
+                            try {
+                                val update = networkJson.decodeFromString<TaskUpdateEvent>(data)
+                                stages.getOrPut(update.taskId) { MutableStateFlow(AnalysisStage.Queued(0)) }.value = mapStage(update)
+                                if (update.taskId !in _taskIds.value) _taskIds.update { current -> current + update.taskId }
                             } catch (e: Throwable) {
-                                return@collect
+                                println("SSE Parse Error: ${e.message}. Raw data: $data")
                             }
-                            stages.getOrPut(update.taskId) { MutableStateFlow(AnalysisStage.Queued(0)) }.value = mapStage(update)
-                            if (update.taskId !in _taskIds.value) _taskIds.update { current -> current + update.taskId }
                         }
                     }
                 } catch (e: CancellationException) {
@@ -82,7 +84,18 @@ class NetworkAnalysisRepository(
         "queued" -> AnalysisStage.Queued(update.positionInQueue ?: 0)
         "processing" -> AnalysisStage.Processing
         "segmentation" -> AnalysisStage.Segmentation
-        "done" -> AnalysisStage.Done
+        "done" -> {
+            // Парсим JSON от Питона
+            val parsedResult = update.message?.let { jsonString ->
+                try {
+                    networkJson.decodeFromString<AnalysisResult>(jsonString)
+                } catch (e: Throwable) {
+                    println("Failed to parse ML Result: ${e.message}")
+                    null
+                }
+            }
+            AnalysisStage.Done(parsedResult)
+        }
         "error" -> AnalysisStage.Error(update.message ?: "Unknown error")
         else -> AnalysisStage.Error(update.message ?: "Unknown stage: ${update.stage}")
     }
@@ -105,9 +118,12 @@ class NetworkAnalysisRepository(
 
             val body = response.bodyAsText()
             val ids = networkJson.decodeFromString<UploadResponse>(body).tasks.map { it.taskId }
-            ids.forEach {
-                stages[it] = MutableStateFlow(AnalysisStage.Queued(0))
-                _taskIds.update { c -> c + it }
+            ids.forEach { taskId ->
+                // Если SSE уже пришел и создал статус Processing, getOrPut его НЕ перезапишет
+                stages.getOrPut(taskId) { MutableStateFlow(AnalysisStage.Queued(0)) }
+                if (taskId !in _taskIds.value) {
+                    _taskIds.update { c -> c + taskId }
+                }
             }
             Result.Success(ids)
         } catch (e: CancellationException) {

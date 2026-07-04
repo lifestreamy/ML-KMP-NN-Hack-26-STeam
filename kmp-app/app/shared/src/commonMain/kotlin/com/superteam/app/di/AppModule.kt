@@ -31,8 +31,15 @@ val networkAppModule = module {
                 showRetryEvents()
             }
             install(Logging) {
-                logger = Logger.SIMPLE
                 level = LogLevel.ALL
+                logger = object : Logger {
+                    override fun log(message: String) {
+                        // Фильтруем спам от health
+                        if (!message.contains("/health")) {
+                            println(message) // или console.log(message) в JS
+                        }
+                    }
+                }
             }
         }
     }

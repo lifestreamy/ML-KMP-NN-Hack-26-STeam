@@ -31,7 +31,7 @@ class FakeAnalysisRepository(
                 stateFlow.value = AnalysisStage.Segmentation
                 delay(2500.milliseconds)
                 if (stages[taskId]?.value is AnalysisStage.Error) continue
-                stateFlow.value = AnalysisStage.Done
+                stateFlow.value = AnalysisStage.Done()
             }
         }
     }

@@ -104,10 +104,9 @@ fun Application.module() {
                 if (part is PartData.FileItem) {
                     val fileName = part.originalFileName ?: "upload"
                     val taskId = UUID.randomUUID().toString().take(12)
-
-                    val freeMem = Runtime.getRuntime().freeMemory() / (1024 * 1024)
-                    val totalMem = Runtime.getRuntime().totalMemory() / (1024 * 1024)
-                    println("[KTOR-GATEWAY] Accepting file: $fileName. JVM Memory: Free ${freeMem}MB / Total ${totalMem}MB")
+                    
+                    val time = java.time.LocalDateTime.now().toString().replace("T", " ")
+                    println("$time [KTOR-GATEWAY] Accepting file: $fileName. Generating Task ID: $taskId")
 
                     val tempFile = File(System.getProperty("java.io.tmpdir"), "${taskId}_$fileName")
                     part.provider().copyAndClose(tempFile.writeChannel())
@@ -115,7 +114,7 @@ fun Application.module() {
                     taskQueue.enqueueTask(clientId, taskId, fileName, tempFile)
                     taskIds.add(taskId)
                 }
-                part.dispose()
+                part.release()
             }
 
             call.respond(mapOf("tasks" to taskIds.map { mapOf("task_id" to it, "filename" to it) }))

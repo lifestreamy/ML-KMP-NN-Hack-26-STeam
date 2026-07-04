@@ -38,7 +38,8 @@ class TaskQueueManager {
                     continue
                 }
 
-                println("[KTOR-QUEUE] Starting task ${task.taskId}. Sending to Python ML...")
+                val timeStart = java.time.LocalDateTime.now().toString().replace("T", " ")
+                println("$timeStart [KTOR-QUEUE] Starting task ${task.taskId} -> Sending to Python ML...")
                 emit(task.taskId, "processing", pos)
                 sf.value = AnalysisStage.Processing
 
@@ -53,10 +54,11 @@ class TaskQueueManager {
 
                     if (response.status.isSuccess()) {
                         val resultJson = response.bodyAsText()
-                        println("[KTOR-QUEUE] Task ${task.taskId} ML Inference Done.")
+                        val timeDone = java.time.LocalDateTime.now().toString().replace("T", " ")
+                        println("$timeDone [KTOR-QUEUE] Task ${task.taskId} ML Inference Done. Received JSON.")
 
                         emit(task.taskId, "done", pos, message = resultJson)
-                        sf.value = AnalysisStage.Done
+                        sf.value = AnalysisStage.Done(null)
                     } else {
                         throw Exception("ML Server returned ${response.status}")
                     }
@@ -66,7 +68,8 @@ class TaskQueueManager {
                     sf.value = AnalysisStage.Error("ML Inference Failed")
                 } finally {
                     val deleted = task.file.delete()
-                    println("[KTOR-QUEUE] Cleanup: Deleted temp file ${task.file.name} -> $deleted")
+                    val timeClean = java.time.LocalDateTime.now().toString().replace("T", " ")
+                    println("$timeClean [KTOR-QUEUE] Cleanup: Deleted temp file ${task.file.name} -> $deleted")
                 }
             }
         }

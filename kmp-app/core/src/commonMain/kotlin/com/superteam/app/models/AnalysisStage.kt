@@ -7,6 +7,6 @@ sealed interface AnalysisStage {
     @Serializable data class Queued(val position: Int) : AnalysisStage
     @Serializable data object Processing : AnalysisStage
     @Serializable data object Segmentation : AnalysisStage
-    @Serializable data object Done : AnalysisStage
+    @Serializable data class Done(val result: AnalysisResult? = null) : AnalysisStage
     @Serializable data class Error(val message: String) : AnalysisStage
 }
