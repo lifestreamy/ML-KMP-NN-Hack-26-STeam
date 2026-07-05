@@ -4,10 +4,26 @@
 
 Проект объединяет **два взаимодополняющих контура**:
 
-1. **R&D / Demo контур** — готовое Streamlit-приложение с каскадной ML-моделью для демонстрации качества алгоритма и визуализации результатов.
+1. **R&D / Demo контур** — готовое Streamlit-приложение с каскадной ML-моделью для демонстрации качества алгоритма и визуализации результатов. - https://ore-cascade-gin79umiu9ojvq5bdhttxn.streamlit.app/
 2. **Production / Enterprise контур** — масштабируемая архитектура на Kotlin Multiplatform + Ktor + Python ML service, рассчитанная на многопользовательскую эксплуатацию, очереди задач и безопасный inference.
+<img width="1906" he<img width="864" height="1821" alt="diagram_nornickel_enterprise_app" src="https://github.com/user-attachments/assets/dd64adfc-c4ff-46c9-baa6-5878d265e671" />
+---
+
+## Интерфейс Enterprise Production Контура
+
+Главный экран загрузки и очередь задач Compose UI 
+<img width="1885" height="977" alt="image" src="https://github.com/user-attachments/assets/60c2593c-ace4-432c-888b-70ec05eb6710" />
+
+Экран с результатами анализа и визуализацией ML
+
+ight="1021" alt="image" src="https://github.com/user-attachments/assets/9b709966-771c-40ee-867b-ab70eca9613c" />
+
 
 ---
+
+## Интерфейс Demo Streamlit https://ore-cascade-gin79umiu9ojvq5bdhttxn.streamlit.app/
+<img width="2540" height="1320" alt="image" src="https://github.com/user-attachments/assets/35286f54-95f1-40e3-8f0b-610255fe748c" />
+
 
 ## Содержание
 
@@ -17,8 +33,8 @@
 - [R&D контур: Streamlit demo](#rd-контур-streamlit-demo)
 - [Production контур: KMP + Ktor + Python](#production-контур-kmp--ktor--python)
 - [Архитектура](#архитектура)
-- [Запуск без Docker](#запуск-без-docker)
-- [Запуск через Docker Compose](#запуск-через-docker-compose)
+- [Запуск через Docker Compose (Production)](#запуск-через-docker-compose-production)
+- [Запуск для разработки (без Docker)](#запуск-для-разработки-без-docker)
 - [Маршруты и сервисы](#маршруты-и-сервисы)
 - [Что уже реализовано](#что-уже-реализовано)
 - [Ограничения](#ограничения)
@@ -68,6 +84,7 @@
 - очередь задач;
 - backpressure;
 - изоляция ML-сервиса;
+- раздача статических файлов (результатов ML);
 - доставка статусов клиенту через SSE.
 
 Этот контур нужен для реальной эксплуатации в организации, когда несколько пользователей одновременно отправляют задания на inference.
@@ -79,32 +96,35 @@
 ```text
 .
 ├── kmp-app/                           # Kotlin Multiplatform app + Ktor backend
-├── ml-service/                        # Python ML service для production-контура
+│   ├── app/                           # Shared UI Compose Multiplatform (Web)
+│   ├── core/                          # DTOs, Error models, Network Result classes
+│   └── server/                        # Ktor API Gateway & Task Queue
+├── ml-service/                        # Python ML service (FastAPI)
+│   ├── app/                           # ML Pipeline & Web endpoints
+│   ├── outputs/                       # Сгенерированные маски и отчеты
+│   └── requirements.txt
 ├── solutions/
-│   └── ore-cascade-streamlit/         # Исходный R&D Streamlit-проект
-├── docs/                              # Архитектура, презентация, схемы, материалы
+│   └── ore-cascade/                   # Streamlit R&D проект
+├── docker-compose.yml                 # Файл развертывания
 └── README.md
 ```
+
+*(Папка `.kotlin/` добавлена в `.gitignore`, чтобы не коммитить кэш зависимостей и метаданные KMP).*
 
 ---
 
 ## R&D контур: Streamlit demo
 
-Папка: `solutions/ore-cascade-streamlit/`
-
-Источник: отдельный проект с каскадной моделью и визуализацией результатов.
+Папка: `solutions/ore-cascade/`
 
 Основные особенности:
-
 - веб-демо на Streamlit;
 - загрузка одного изображения;
 - batch-обработка;
 - визуализация зон;
-- экспорт результатов;
-- рабочий прототип, которым уже можно пользоваться как исследовательским инструментом.
+- экспорт результатов.
 
-
-- Live demo: `https://ore-cascade-gin79umiu9ojvq5bdhttxn.streamlit.app/`
+**Live demo:** `https://ore-cascade-gin79umiu9ojvq5bdhttxn.streamlit.app/`
 
 ---
 
@@ -112,16 +132,13 @@
 
 ### Состав
 
-- **KMP UI** — клиентский интерфейс;
-- **Ktor Gateway** — бизнес-сервер и очередь задач;
-- **Python ML Service** — inference-слой.
+- **KMP UI** — клиентский Web-интерфейс на WasmJS;
+- **Ktor Gateway** — бизнес-сервер, REST API и очередь задач;
+- **Python ML Service** — слой inference на FastAPI.
 
 ### Зачем нужен отдельный gateway
 
-В production нельзя пускать всех пользователей прямо в ML-процесс.
-
-Gateway решает это:
-
+В production нельзя пускать всех пользователей прямо в ML-процесс. Gateway решает это:
 - регистрирует клиентов отдельно;
 - не дает пользователям мешать друг другу;
 - управляет очередью задач;
@@ -132,14 +149,12 @@ Gateway решает это:
 
 ### Зачем нужен отдельный ML service
 
-ML-инференс тяжелый и чувствителен к памяти/GPU.
-
-Поэтому inference вынесен отдельно:
-
+ML-инференс ресурсоемкий. Поэтому он вынесен отдельно:
 - выполняется изолированно;
-- может обрабатывать задачи по одной;
-- не “роняет” основной backend;
-- может быть масштабирован отдельно.
+- обрабатывает задачи последовательно;
+- генерирует визуализации и раздает их как статику (`/outputs`);
+- не "роняет" JVM-бэкенд;
+- может масштабироваться независимо.
 
 ---
 
@@ -148,171 +163,115 @@ ML-инференс тяжелый и чувствителен к памяти/G
 ### Production-сценарий
 
 1. Геолог загружает изображение через web UI.
-2. KMP-клиент отправляет задачу в Ktor gateway.
-3. Gateway ставит задачу в очередь.
-4. Python ML service берет задачу на inference.
-5. Gateway получает результат.
-6. Клиент получает статусы `Queued -> Processing -> Done` через SSE.
-7. Результат отображается в UI.
-
-### Ключевые свойства архитектуры
-
-- **Backpressure** — ML-сервис не перегружается.
-- **Очередь задач** — поддержка массовой загрузки.
-- **SSE** — живые статусы без опроса.
-- **KMP** — единая кодовая база UI.
-- **JVM backend** — enterprise-совместимость.
+2. KMP-клиент отправляет задачу в Ktor gateway (POST `/api/tasks`).
+3. Gateway принимает Multipart-файл, генерирует `taskId` и ставит задачу в очередь.
+4. Python ML service вызывается сервером для инференса, получая само изображение и `sample_id`.
+5. ML-модель классифицирует руду, сохраняет графики в `outputs/` и возвращает JSON.
+6. Клиент получает статусы `Queued -> Processing -> Done` через Server-Sent Events (SSE).
+7. UI загружает графики напрямую из FastAPI (`http://localhost:8000/outputs/...`) и отображает финальный вердикт.
 
 ---
 
-## Запуск без Docker
+## Запуск через Docker Compose (Production)
 
-### 1. Streamlit demo
-
-Перейдите в папку:
+Для развертывания всего production-контура одной командой:
 
 ```bash
-cd solutions/ore-cascade-streamlit
+docker compose up --build -d
 ```
 
-Создайте окружение и установите зависимости:
+**Что произойдет:**
+1. Поднимется `ml-service` на порту `8000`.
+2. Поднимется `ktor-gateway` на порту `8080`. Контейнер использует Gradle-кэш для быстрого рестарта.
+3. Ktor-сервер будет "знать" о ML-сервисе через переменную окружения `ML_URL`.
 
-```bash
-python -m venv venv
-venv\\Scripts\\activate
-pip install -r requirements.txt
-```
+**Доступность:**
+- Backend API Gateway: `http://localhost:8080`
+- ML Service API: `http://localhost:8000`
 
-Запуск:
+---
 
-```bash
-streamlit run streamlit_app.py
-```
+## Запуск для разработки (без Docker)
 
-### 2. Python ML service
-
-Перейдите в папку:
+### 1. Python ML service
 
 ```bash
 cd ml-service
-```
-
-Установите зависимости:
-
-```bash
 python -m venv .venv
-.venv\\Scripts\\activate
+# Windows: .venv\Scripts\activate
+# Mac/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-Запуск:
-
-```bash
 python run.py
 ```
+*Сервис поднимется на `http://localhost:8000`*
 
-Ожидаемый адрес:
-- `http://localhost:8000`
-
-### 3. Ktor + KMP app
-
-Перейдите в папку:
+### 2. Ktor + KMP app (Terminal 1)
 
 ```bash
 cd kmp-app
-```
-
-Запуск backend:
-
-```bash
 ./gradlew :server:run
 ```
+*Ktor gateway поднимется на `http://localhost:8080`*
 
-Запуск web client:
+### 3. Ktor + KMP app (Terminal 2 - Web Client)
 
 ```bash
+cd kmp-app
 ./gradlew :app:webApp:wasmJsBrowserDevelopmentRun
 ```
-
-Ожидаемые адреса:
-- Ktor gateway: `http://localhost:8080`
-- Web UI: адрес dev-сервера Gradle/Compose
-
----
-
-## Запуск через Docker Compose
-
-> Статус: в процессе стабилизации. Рекомендуемый путь для хакатонной проверки — локальный запуск без Docker.
-
-Планируемый compose-сценарий:
-
-- `ml-service` на `8000`
-- `ktor-gateway` на `8080`
-- `web-client` или статическая раздача UI
-
-Если `docker-compose.yml` будет доведен до финального состояния, здесь нужно оставить команду:
-
-```bash
-docker compose up --build
-```
+*Откроется браузер с Web UI на базе Compose Multiplatform.*
 
 ---
 
 ## Маршруты и сервисы
 
-### Python ML service
-- `GET /health`
-- `POST /analyze`
+### Python ML service (`:8000`)
+- `GET /health` — проверка доступности.
+- `POST /analyze` — запуск ML-пайплайна. Принимает `file` и `sample_id` (Form).
+- `GET /outputs/{filename}` — раздача сгенерированных изображений и масок (StaticFiles).
 
-### Ktor gateway
+### Ktor gateway (`:8080`)
 - `GET /health`
-- `POST /api/tasks`
-- `GET /api/tasks/stream`
-- `DELETE /api/tasks`
+- `POST /api/tasks` — загрузка массива изображений.
+- `GET /api/tasks/stream` — SSE endpoint для получения live-обновлений.
+- `DELETE /api/tasks` — отмена задач.
 
 ---
 
 ## Что уже реализовано
 
 ### В R&D контуре
-- рабочая каскадная модель;
-- Streamlit UI;
-- batch processing;
-- визуализация зон;
-- экспорт данных.
+- Рабочая каскадная модель.
+- Streamlit UI для проверки гипотез.
 
 ### В production контуре
-- загрузка нескольких изображений;
-- очередь задач;
-- статусы по SSE;
-- разделение клиентов;
-- интеграция Ktor и Python;
-- parsing ML-result в UI;
-- Result screen с отображением результата;
-- защита от race condition в обновлении статусов.
+- Загрузка нескольких изображений (Multipart).
+- Очередь задач с отслеживанием прогресса.
+- Статусы по SSE.
+- Динамическая подгрузка сгенерированных ML масок и карт плотности в UI Compose.
+- Разделение клиентов.
+- Интеграция Ktor и Python (FastAPI).
+- UI Result Screen с подробной аналитикой и русифицированными лейблами.
 
 ---
 
 ## Ограничения
 
-- Docker Compose может требовать дополнительной донастройки.
+- Фронтенд на WasmJS строго привязан к локальным адресам `localhost:8000` и `localhost:8080` (настраивается через константы перед деплоем в облако).
 - Stage 1 в ML-пайплайне работает на CPU.
-- Визуализация и rich-annotation в production UI могут быть расширены в следующих итерациях.
 - Для новых типов изображений может потребоваться повторная калибровка ML-модели.
 
 ---
 
 ## Дальнейшее развитие
 
-- экспертная валидация и ручная корректировка результата;
-- сбор датасета для дообучения;
-- сохранение разметки;
-- возврат визуализаций прямо в production UI;
-- мобильные сценарии работы геолога;
-- горизонтальное масштабирование ML worker-ов.
+- Экспертная валидация и ручная корректировка результата.
+- Сбор датасета для дообучения.
+- Сохранение разметки в базу данных (PostgreSQL / SQLite).
+- Горизонтальное масштабирование ML worker-ов (Celery / RabbitMQ).
 
 ---
 
 ## Идея проекта в одном абзаце
 
-Мы сделали не только ML-модель, но и показали, как превратить её в реальный промышленный инструмент: от исследовательского демо на Streamlit до масштабируемой production-архитектуры с очередями, безопасным inference и многопользовательским интерфейсом.
+Мы сделали не только ML-модель, но и показали, как превратить её в реальный промышленный инструмент: от исследовательского демо на Streamlit до масштабируемой production-архитектуры с очередями, генерацией статики, безопасным inference и многопользовательским интерфейсом на Kotlin Multiplatform.
