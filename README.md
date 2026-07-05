@@ -16,13 +16,13 @@
 
 Экран с результатами анализа и визуализацией ML
 
-ight="1021" alt="image" src="https://github.com/user-attachments/assets/9b709966-771c-40ee-867b-ab70eca9613c" />
+<img wight="1021" alt="image" src="https://github.com/user-attachments/assets/9b709966-771c-40ee-867b-ab70eca9613c" />
 
 
 ---
 
 ## Интерфейс Demo Streamlit https://ore-cascade-gin79umiu9ojvq5bdhttxn.streamlit.app/
-<img width="2540" height="1320" alt="image" src="https://github.com/user-attachments/assets/35286f54-95f1-40e3-8f0b-610255fe748c" />
+<img width="2540" height="1320" alt="image" src="https://github.com/user-attachments/assets/35286f54-95f1-40e3-8f0b-610255fe748c"/>
 
 
 ## Содержание
