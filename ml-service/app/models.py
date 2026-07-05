@@ -1,20 +1,24 @@
-from pydantic import BaseModel
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict
 
 
-class PhaseInfo(BaseModel):
-    area_pct: float
-    color: str
+class Stage1Details(BaseModel):
+    model_config = ConfigDict(extra='ignore')
 
-
-class Defect(BaseModel):
-    type: str
-    area_px: int
-    bbox: list[int]
+    pct_sulfide: float
+    pct_potential_talc: float
+    pct_background: float
+    pct_inclusions_in_talc: float
+    pct_final_zone: float
+    stage1_pred: str
 
 
 class AnalysisResult(BaseModel):
-    sample_id: str
-    ore_class: str
-    talkc_pct: float
-    phases: dict[str, PhaseInfo] = {}
-    defects: list[Defect] = []
+    model_config = ConfigDict(extra='ignore')
+
+    sample: str
+    final_label: str
+    stage1_details: Stage1Details
+    stage2_pred: Optional[str] = None
+    stage2_prob_trudnie: Optional[float] = None

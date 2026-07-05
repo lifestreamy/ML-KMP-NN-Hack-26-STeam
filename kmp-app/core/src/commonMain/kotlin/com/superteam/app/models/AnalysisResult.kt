@@ -5,22 +5,19 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class AnalysisResult(
-    @SerialName("sample_id") val sampleId: String,
-    @SerialName("ore_class") val oreClass: String,
-    @SerialName("talkc_pct") val talkcPct: Double,
-    val phases: Map<String, PhaseInfo> = emptyMap(),
-    val defects: List<Defect> = emptyList()
-)
+    @SerialName("sample") val sampleId: String,
+    @SerialName("final_label") val oreClass: String,
+    @SerialName("stage1_details") val stage1Details: Stage1Details,
+    @SerialName("stage2_pred") val stage2Pred: String? = null,
+    @SerialName("stage2_prob_trudnie") val stage2ProbTrudnie: Double? = null
+                         )
 
 @Serializable
-data class PhaseInfo(
-    @SerialName("area_pct") val areaPct: Double,
-    val color: String
-)
-
-@Serializable
-data class Defect(
-    val type: String,
-    @SerialName("area_px") val areaPx: Int,
-    val bbox: List<Int>
-)
+data class Stage1Details(
+    @SerialName("pct_sulfide") val pctSulfide: Double,
+    @SerialName("pct_potential_talc") val pctPotentialTalc: Double,
+    @SerialName("pct_background") val pctBackground: Double,
+    @SerialName("pct_inclusions_in_talc") val pctInclusionsInTalc: Double,
+    @SerialName("pct_final_zone") val pctFinalZone: Double,
+    @SerialName("stage1_pred") val stage1Pred: String
+                        )

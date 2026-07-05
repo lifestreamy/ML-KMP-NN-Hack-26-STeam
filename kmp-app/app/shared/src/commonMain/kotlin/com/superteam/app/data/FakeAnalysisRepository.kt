@@ -3,7 +3,9 @@ package com.superteam.app.data
 import com.superteam.app.domain.AnalysisRepository
 import com.superteam.app.error.NetworkError
 import com.superteam.app.error.Result
+import com.superteam.app.models.AnalysisResult
 import com.superteam.app.models.AnalysisStage
+import com.superteam.app.models.Stage1Details
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
@@ -31,7 +33,19 @@ class FakeAnalysisRepository(
                 stateFlow.value = AnalysisStage.Segmentation
                 delay(2500.milliseconds)
                 if (stages[taskId]?.value is AnalysisStage.Error) continue
-                stateFlow.value = AnalysisStage.Done()
+                stateFlow.value = AnalysisStage.Done(
+                    result = AnalysisResult(
+                        sampleId = taskId,
+                        oreClass = "ryadovie",
+                        stage1Details = Stage1Details(
+                            pctSulfide = 15.0,
+                            pctPotentialTalc = 20.0,
+                            pctBackground = 50.0,
+                            pctInclusionsInTalc = 5.0,
+                            pctFinalZone = 10.0,
+                            stage1Pred = "not_otalkovanie"),
+                        stage2Pred = "ryadovie",
+                        stage2ProbTrudnie = 0.12))
             }
         }
     }
