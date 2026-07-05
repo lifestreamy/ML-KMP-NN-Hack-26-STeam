@@ -32,7 +32,7 @@ async def analyze_endpoint(
         file_bytes = await file.read()
 
         if not sample_id:
-            sample_id = file.filename.split("_")[0] if "_" in file.filename else "unknown"
+            sample_id = file.filename.split("_")[0] if "_" in file.filename else file.filename.rsplit(".", 1)[0]
 
         result = await process_image(sample_id, file_bytes, file.filename)
         return result

@@ -5,18 +5,27 @@ services:
     image: gradle:8.7-jdk21
     volumes:
       - ./kmp-app:/app
+      - gradle-cache:/home/gradle/.gradle
     working_dir: /app
-    command: ./gradlew :server:run
+    command: ./gradlew :server:run --no-daemon
     ports:
       - "8080:8080"
     depends_on:
       - ml-service
+    restart: unless-stopped
+    environment:
+      # Полезно, если в Ktor захочешь обращаться к ML по имени контейнера
+      - ML_URL=http://ml-service:8000
 
   ml-service:
     image: python:3.11-slim
     volumes:
       - ./ml-service:/app
     working_dir: /app
-    command: sh -c "pip install -r requirements.txt && python run.py"
+    command: sh -c "pip install --no-cache-dir -r requirements.txt && python run.py"
     ports:
       - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  gradle-cache:

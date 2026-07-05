@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.*
 import org.koin.compose.koinInject
 import kotlin.math.round
 
+private const val ML_BASE_URL = "http://localhost:8000"
+
 data class ResultState(val result: AnalysisResult? = null, val isLoading: Boolean = true, val error: String? = null)
 
 class ResultViewModel(private val taskId: String, private val repository: AnalysisRepository) {
@@ -90,7 +92,7 @@ fun ResultScreen(state: ResultState, taskId: String, onBackClick: () -> Unit) {
                     item {
                         Text("Зоны (Сульфиды / Тальк)")
                         AsyncImage(
-                            model = "http://localhost:8000/outputs/${taskId}_zones.png",
+                            model = "$ML_BASE_URL/outputs/${r.sampleId}_zones.png",
                             contentDescription = "Маска зон",
                             modifier = Modifier.fillMaxWidth().height(250.dp).padding(vertical = 8.dp)
                                   )
@@ -99,7 +101,7 @@ fun ResultScreen(state: ResultState, taskId: String, onBackClick: () -> Unit) {
                     item {
                         Text("Карта плотности")
                         AsyncImage(
-                            model = "http://localhost:8000/outputs/${taskId}_density.png",
+                            model = "$ML_BASE_URL/outputs/${r.sampleId}_density.png",
                             contentDescription = "Карта плотности",
                             modifier = Modifier.fillMaxWidth().height(250.dp).padding(vertical = 8.dp)
                                   )
