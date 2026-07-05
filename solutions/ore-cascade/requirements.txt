@@ -1,0 +1,17 @@
+streamlit==1.38.0
+numpy==2.2.6
+pandas==2.3.3
+matplotlib==3.10.9
+pillow
+tqdm==4.68.3
+scikit-learn==1.7.2
+torch==2.12.1
+torchvision==0.27.1
+opencv-python-headless==5.0.0.93
+reportlab==4.4.10
+
+# Если у вас AMD GPU + Windows — раскомментируйте строку ниже
+# (тогда Stage 2 будет использовать DirectML вместо CPU).
+# Если у вас NVIDIA (CUDA) или нет GPU вообще — эту строку добавлять не нужно,
+# просто установите зависимости выше командой: pip install -r requirements.txt
+# torch-directml
